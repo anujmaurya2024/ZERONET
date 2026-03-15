@@ -16,21 +16,21 @@ export default function Chat() {
   const peerName = peer?.name || device?.deviceName || 'Device';
 
   return (
-    <div className="flex flex-col h-screen max-h-screen overflow-hidden bg-background">
+    <div className="flex flex-col h-screen max-h-[100dvh] overflow-hidden bg-background">
       <motion.header
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white"
+        className="shrink-0 flex items-center gap-3 pl-safe-l pr-safe-r px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-slate-200 bg-white min-h-[52px]"
       >
         <button
           onClick={() => navigate('/')}
-          className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-text transition-colors"
+          className="p-2.5 -ml-1 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-500 active:bg-slate-100 sm:hover:bg-slate-100 text-text transition-colors touch-manipulation"
           aria-label="Back"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-6 h-6" />
         </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="font-semibold text-text truncate">{peerName}</h1>
+        <div className="flex-1 min-w-0 py-1">
+          <h1 className="font-semibold text-text truncate text-base sm:text-lg">{peerName}</h1>
           <p className="text-xs text-slate-500 truncate">{peerId}</p>
         </div>
       </motion.header>

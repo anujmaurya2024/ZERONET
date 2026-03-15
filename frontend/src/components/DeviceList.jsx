@@ -13,19 +13,19 @@ export default function DeviceList({ devices, isScanning, onScan }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-text flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base sm:text-lg font-semibold text-text flex items-center gap-2">
           {connected ? (
-            <Wifi className="w-5 h-5 text-accent" />
+            <Wifi className="w-5 h-5 text-accent shrink-0" />
           ) : (
-            <WifiOff className="w-5 h-5 text-slate-400" />
+            <WifiOff className="w-5 h-5 text-slate-400 shrink-0" />
           )}
           Nearby devices
         </h2>
         <button
           onClick={handleRefresh}
           disabled={isScanning || !connected}
-          className="text-sm text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+          className="text-sm font-medium text-primary active:underline sm:hover:underline disabled:opacity-50 disabled:no-underline py-2 px-3 min-h-[44px] flex items-center touch-manipulation"
         >
           {isScanning ? 'Scanning...' : 'Refresh'}
         </button>
@@ -35,10 +35,10 @@ export default function DeviceList({ devices, isScanning, onScan }) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-center py-12 text-slate-500 rounded-xl bg-slate-50 border border-dashed border-slate-200"
+          className="text-center py-10 sm:py-12 px-4 text-slate-500 rounded-xl bg-slate-50 border border-dashed border-slate-200"
         >
-          <p className="font-medium">No devices found</p>
-          <p className="text-sm mt-1">Make sure other devices are on the same network and have Zeronet open.</p>
+          <p className="font-medium text-base">No devices found</p>
+          <p className="text-sm mt-1.5 max-w-[260px] mx-auto">Make sure other devices are on the same network and have Zeronet open.</p>
         </motion.div>
       )}
 

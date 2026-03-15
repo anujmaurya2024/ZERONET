@@ -5,13 +5,13 @@ import Chat from './pages/Chat';
 
 function App() {
   return (
-    <>
+    <div className="min-h-screen min-h-[100dvh] max-w-full overflow-x-hidden">
       <Navbar />
       <Routes>
         <Route path="/" element={<Lobby />} />
         <Route path="/chat/:peerId" element={<Chat />} />
       </Routes>
-    </>
+    </div>
   );
 }
 

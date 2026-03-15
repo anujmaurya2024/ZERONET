@@ -12,6 +12,16 @@ export default {
         accent: '#22C55E',
         text: '#1E293B',
       },
+      minHeight: {
+        screen: '100vh',
+        'screen-dynamic': '100dvh',
+      },
+      padding: {
+        'safe-t': 'env(safe-area-inset-top)',
+        'safe-r': 'env(safe-area-inset-right)',
+        'safe-b': 'env(safe-area-inset-bottom)',
+        'safe-l': 'env(safe-area-inset-left)',
+      },
     },
   },
   plugins: [],
