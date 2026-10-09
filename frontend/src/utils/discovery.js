@@ -50,5 +50,8 @@ export async function scanNetwork() {
 }
 
 export function getDefaultServerUrl() {
+  if (import.meta.env.VITE_SERVER_URL) {
+    return import.meta.env.VITE_SERVER_URL;
+  }
   return getBaseUrl(window.location.hostname);
 }
