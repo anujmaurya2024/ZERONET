@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Zap } from 'lucide-react';
 import DeviceList from '../components/DeviceList';
-import ConnectionModal from '../components/ConnectionModal';
 import { useSocket } from '../context/SocketContext';
 import { useDiscovery } from '../context/DiscoveryContext';
 
@@ -19,8 +18,6 @@ export default function Lobby() {
       className="min-h-screen min-h-[100dvh] pb-[max(2rem,calc(env(safe-area-inset-bottom)+1rem))]"
       style={{ background: 'transparent' }}
     >
-      <ConnectionModal />
-
       <div className="max-w-2xl mx-auto pl-safe-l pr-safe-r px-4 sm:px-6 py-6 sm:py-10">
 
         {/* Hero Section */}

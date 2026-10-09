@@ -53,6 +53,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 case "webrtc-offer" -> handleWebRtcOffer(session, socketId, data);
                 case "webrtc-answer" -> handleWebRtcAnswer(session, socketId, data);
                 case "webrtc-ice-candidate" -> handleWebRtcIceCandidate(session, socketId, data);
+                case "peer-message" -> handlePeerMessage(session, socketId, data);
                 default -> logger.warn("Unhandled event: {}", event);
             }
         } catch (Exception e) {
@@ -222,6 +223,22 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             sendToSession(target.getSession(), "webrtc-ice-candidate", forward);
         } else {
             logger.warn("Target not found for webrtc-ice-candidate (toSocketId: {})", toSocketId);
+        }
+    }
+
+    private void handlePeerMessage(WebSocketSession session, String socketId, JsonNode data) {
+        String toSocketId = data.has("toSocketId") ? data.get("toSocketId").asText() : "";
+        ConnectedPeer target = findTargetPeer(data, toSocketId);
+        if (target != null && target.getSession().isOpen()) {
+            ObjectNode forward = objectMapper.createObjectNode();
+            forward.put("fromSocketId", socketId);
+            if (data.has("fromDeviceId")) {
+                forward.put("fromDeviceId", data.get("fromDeviceId").asText());
+            }
+            if (data.has("data")) {
+                forward.set("data", data.get("data"));
+            }
+            sendToSession(target.getSession(), "peer-message", forward);
         }
     }
 

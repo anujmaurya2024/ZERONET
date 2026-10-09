@@ -53,5 +53,8 @@ export function getDefaultServerUrl() {
   if (import.meta.env.VITE_SERVER_URL) {
     return import.meta.env.VITE_SERVER_URL;
   }
-  return getBaseUrl(window.location.hostname);
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://zeronet-n10k.onrender.com';
+  }
+  return 'https://zeronet-n10k.onrender.com';
 }

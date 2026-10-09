@@ -9,6 +9,15 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
 ];
 
 export function PeerProvider({ children }) {
@@ -37,7 +46,9 @@ export function PeerProvider({ children }) {
       candidateQueues.current[peerId] = [];
       for (const cand of queue) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(cand));
+          if (cand && cand.candidate) {
+            await pc.addIceCandidate(cand);
+          }
         } catch (err) {
           console.warn(`[WebRTC] Failed to add queued ICE candidate for ${peerId}:`, err);
         }
@@ -46,6 +57,7 @@ export function PeerProvider({ children }) {
   }, []);
 
   const addIceCandidateSafely = useCallback(async (peerId, pc, candidate) => {
+    if (!candidate || !candidate.candidate) return;
     if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
       if (!candidateQueues.current[peerId]) {
         candidateQueues.current[peerId] = [];
@@ -54,7 +66,7 @@ export function PeerProvider({ children }) {
       return;
     }
     try {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      await pc.addIceCandidate(candidate);
     } catch (err) {
       console.warn(`[WebRTC] Failed to add direct ICE candidate for ${peerId}:`, err);
     }
@@ -94,7 +106,7 @@ export function PeerProvider({ children }) {
         dc.onopen = handleOpen;
         dc.onclose = () => {
           console.log(`[WebRTC] DataChannel closed for ${peerId}`);
-          updatePeer(peerId, { status: 'disconnected' });
+          updatePeer(peerId, { dc: null });
         };
         if (dc.readyState === 'open') {
           handleOpen();
@@ -111,7 +123,7 @@ export function PeerProvider({ children }) {
           dc.onopen = handleOpen;
           dc.onclose = () => {
             console.log(`[WebRTC] DataChannel closed for ${peerId}`);
-            updatePeer(peerId, { status: 'disconnected' });
+            updatePeer(peerId, { dc: null });
           };
           if (dc.readyState === 'open') {
             handleOpen();
@@ -124,7 +136,7 @@ export function PeerProvider({ children }) {
           socket.emit('webrtc-ice-candidate', {
             toSocketId: remoteSocketId,
             toDeviceId: peerId,
-            candidate: e.candidate,
+            candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
           });
         }
       };
@@ -134,9 +146,8 @@ export function PeerProvider({ children }) {
         if (pc.connectionState === 'connected') {
           updatePeer(peerId, { status: 'connected' });
         } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-          updatePeer(peerId, { status: 'disconnected' });
-        } else {
-          updatePeer(peerId, { status: pc.connectionState });
+          // Keep connected status if socket relay is available
+          console.log(`[WebRTC] pc state ${pc.connectionState}, relying on socket relay if needed`);
         }
       };
 
@@ -151,7 +162,7 @@ export function PeerProvider({ children }) {
         pc,
         dc: dc || null,
         name: peerName || existing?.name || peerId,
-        status: 'connecting',
+        status: 'connected',
         remoteSocketId,
       };
 
@@ -175,7 +186,7 @@ export function PeerProvider({ children }) {
     }
     updatePeer(peerId, {
       name: peerName || peerId,
-      status: 'connecting',
+      status: 'requested', // User has requested, waiting for other user to accept
       remoteSocketId,
     });
     socket.emit('request-connection', {
@@ -201,13 +212,20 @@ export function PeerProvider({ children }) {
       socketIdToPeerId.current[toSocketId] = peerId;
       peerIdToSocketId.current[peerId] = toSocketId;
 
+      // Immediately mark peer status as connected so UI links to chat without delay
+      updatePeer(peerId, {
+        name: toDeviceName,
+        status: 'connected',
+        remoteSocketId: toSocketId,
+      });
+
       const { pc } = await createPeerConnection(peerId, toSocketId, true, toDeviceName);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit('webrtc-offer', {
         toSocketId,
         toDeviceId: peerId,
-        offer,
+        offer: { type: offer.type, sdp: offer.sdp },
       });
     };
 
@@ -232,6 +250,8 @@ export function PeerProvider({ children }) {
         pc = res.pc;
       }
 
+      updatePeer(peerId, { status: 'connected', remoteSocketId: fromSocketId });
+
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await flushCandidateQueue(peerId, pc);
 
@@ -241,7 +261,7 @@ export function PeerProvider({ children }) {
       socket.emit('webrtc-answer', {
         toSocketId: fromSocketId,
         toDeviceId: peerId,
-        answer,
+        answer: { type: answer.type, sdp: answer.sdp },
       });
 
       setIncomingRequest(null);
@@ -255,6 +275,7 @@ export function PeerProvider({ children }) {
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         await flushCandidateQueue(peerId, pc);
+        updatePeer(peerId, { status: 'connected' });
       } else {
         console.warn(`[WebRTC] Peer connection not found for answer from ${fromSocketId}`);
       }
@@ -270,12 +291,21 @@ export function PeerProvider({ children }) {
       await addIceCandidateSafely(peerId, peer?.pc, candidate);
     };
 
+    const handlePeerMessage = ({ fromDeviceId, data }) => {
+      console.log(`[Relay] Received peer-message from ${fromDeviceId}`);
+      const fn = dataChannelHandlers.current[fromDeviceId];
+      if (fn) {
+        fn({ data });
+      }
+    };
+
     socket.on('connection-request', handleConnectionRequest);
     socket.on('connection-accepted', handleConnectionAccepted);
     socket.on('connection-rejected', handleConnectionRejected);
     socket.on('webrtc-offer', handleWebRtcOffer);
     socket.on('webrtc-answer', handleWebRtcAnswer);
     socket.on('webrtc-ice-candidate', handleWebRtcIceCandidate);
+    socket.on('peer-message', handlePeerMessage);
 
     return () => {
       socket.off('connection-request', handleConnectionRequest);
@@ -284,8 +314,9 @@ export function PeerProvider({ children }) {
       socket.off('webrtc-offer', handleWebRtcOffer);
       socket.off('webrtc-answer', handleWebRtcAnswer);
       socket.off('webrtc-ice-candidate', handleWebRtcIceCandidate);
+      socket.off('peer-message', handlePeerMessage);
     };
-  }, [socket, createPeerConnection, flushCandidateQueue, addIceCandidateSafely]);
+  }, [socket, createPeerConnection, flushCandidateQueue, addIceCandidateSafely, updatePeer]);
 
   const acceptRequest = useCallback(async () => {
     if (!incomingRequest) return null;
@@ -294,6 +325,13 @@ export function PeerProvider({ children }) {
 
     socketIdToPeerId.current[fromSocketId] = fromDeviceId;
     peerIdToSocketId.current[fromDeviceId] = fromSocketId;
+
+    // Immediately mark as connected on accepting side
+    updatePeer(fromDeviceId, {
+      name: fromDeviceName,
+      status: 'connected',
+      remoteSocketId: fromSocketId,
+    });
 
     await createPeerConnection(
       fromDeviceId,
@@ -309,7 +347,7 @@ export function PeerProvider({ children }) {
 
     setIncomingRequest(null);
     return fromDeviceId;
-  }, [incomingRequest, socket, deviceId, createPeerConnection]);
+  }, [incomingRequest, socket, deviceId, createPeerConnection, updatePeer]);
 
   const rejectRequest = useCallback(() => {
     if (incomingRequest) {
@@ -320,10 +358,29 @@ export function PeerProvider({ children }) {
 
   const sendToPeer = useCallback((peerId, data) => {
     const peer = activePeersRef.current[peerId] || peers[peerId];
+    // 1. Direct WebRTC P2P DataChannel if ready
     if (peer?.dc?.readyState === 'open') {
-      peer.dc.send(data);
+      try {
+        peer.dc.send(data);
+        return true;
+      } catch (err) {
+        console.warn('[WebRTC] dc.send failed, attempting socket relay fallback:', err);
+      }
     }
-  }, [peers]);
+
+    // 2. High-speed WebSocket relay fallback
+    const remoteSocketId = peer?.remoteSocketId || peerIdToSocketId.current[peerId];
+    if (socket && (remoteSocketId || peerId)) {
+      socket.emit('peer-message', {
+        toSocketId: remoteSocketId,
+        toDeviceId: peerId,
+        fromDeviceId: deviceId,
+        data,
+      });
+      return true;
+    }
+    return false;
+  }, [peers, socket, deviceId]);
 
   const registerDataChannelHandler = useCallback((peerId, handler) => {
     dataChannelHandlers.current[peerId] = handler;

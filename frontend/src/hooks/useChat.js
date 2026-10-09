@@ -111,23 +111,21 @@ export function useChat(peerId) {
 
   const sendMessage = useCallback(
     (text) => {
-      if (!text.trim() || !dc || dc.readyState !== 'open') return;
+      if (!text.trim()) return;
       sendToPeer(peerId, JSON.stringify({ type: 'text', payload: text }));
       setMessages((m) => [
         ...m,
         { type: 'text', text, timestamp: Date.now(), isOwn: true },
       ]);
     },
-    [dc, peerId, sendToPeer]
+    [peerId, sendToPeer]
   );
 
   const sendTyping = useCallback(
     (value) => {
-      if (dc?.readyState === 'open') {
-        sendToPeer(peerId, JSON.stringify({ type: 'typing', payload: value }));
-      }
+      sendToPeer(peerId, JSON.stringify({ type: 'typing', payload: value }));
     },
-    [dc, peerId, sendToPeer]
+    [peerId, sendToPeer]
   );
 
   const sendFile = useCallback(
@@ -209,7 +207,8 @@ export function useChat(peerId) {
     sendTyping,
     sendFile,
     downloadFile,
-    isConnected: dc?.readyState === 'open',
+    isConnected: Boolean(peer?.status === 'connected' || dc?.readyState === 'open'),
+    isDirectP2P: dc?.readyState === 'open',
   };
 }
 
