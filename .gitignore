@@ -5,6 +5,9 @@ node_modules/
 .pnp.js
 
 # Build outputs
+target/
+**/target/
+*.class
 dist/
 **/dist/
 build/
