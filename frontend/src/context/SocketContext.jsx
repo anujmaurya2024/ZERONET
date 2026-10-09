@@ -3,7 +3,20 @@ import { useDiscovery } from './DiscoveryContext';
 
 const SocketContext = createContext(null);
 
-const DEVICE_ID = `device-${Math.random().toString(36).slice(2, 11)}`;
+const getStoredDeviceId = () => {
+  try {
+    let id = sessionStorage.getItem('zeronet_device_id');
+    if (!id) {
+      id = `device-${Math.random().toString(36).slice(2, 11)}`;
+      sessionStorage.setItem('zeronet_device_id', id);
+    }
+    return id;
+  } catch {
+    return `device-${Math.random().toString(36).slice(2, 11)}`;
+  }
+};
+
+const DEVICE_ID = getStoredDeviceId();
 const DEVICE_NAME = typeof navigator !== 'undefined' && navigator.userAgent
   ? `Device-${navigator.userAgent.slice(0, 20)}`
   : 'My Device';
@@ -71,7 +84,11 @@ class ZeronetSocket {
 
   off(event, handler) {
     if (this.handlers.has(event)) {
-      this.handlers.get(event).delete(handler);
+      if (handler) {
+        this.handlers.get(event).delete(handler);
+      } else {
+        this.handlers.delete(event);
+      }
     }
   }
 

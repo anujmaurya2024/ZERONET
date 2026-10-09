@@ -1,9 +1,19 @@
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gauge, Check, X } from 'lucide-react';
 import { usePeer } from '../context/PeerContext';
 
 export default function ConnectionModal() {
+  const navigate = useNavigate();
   const { incomingRequest, acceptRequest, rejectRequest } = usePeer();
+
+  const handleAccept = async () => {
+    const fromDeviceId = incomingRequest?.fromDeviceId;
+    await acceptRequest();
+    if (fromDeviceId) {
+      navigate(`/chat/${fromDeviceId}`);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -118,7 +128,7 @@ export default function ConnectionModal() {
                   REJECT
                 </button>
                 <button
-                  onClick={acceptRequest}
+                  onClick={handleAccept}
                   className="flex-1 min-h-[48px] py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-200 touch-manipulation active:scale-95"
                   style={{
                     background: 'linear-gradient(135deg, #e10600, #a80400)',

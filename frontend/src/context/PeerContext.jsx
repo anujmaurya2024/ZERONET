@@ -3,29 +3,77 @@ import { useSocket } from './SocketContext';
 
 const PeerContext = createContext(null);
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+];
 
 export function PeerProvider({ children }) {
   const { socket, deviceId, deviceName } = useSocket();
   const [peers, setPeers] = useState({}); // peerId -> { pc, dc, name, status, remoteSocketId }
-  const peersRef = useRef(peers);
-  peersRef.current = peers;
+  const activePeersRef = useRef({}); // Synchronous map: peerId -> { pc, dc, name, status, remoteSocketId }
   const [incomingRequest, setIncomingRequest] = useState(null);
   const socketIdToPeerId = useRef({});
-  const pendingPeerBySocketId = useRef({});
-  const dataChannelHandlers = useRef({}); // peerId -> (e) => void, so messages are handled even if useChat effect runs late
+  const peerIdToSocketId = useRef({});
+  const candidateQueues = useRef({}); // peerId -> candidate[]
+  const dataChannelHandlers = useRef({}); // peerId -> (e) => void
+
+  const updatePeer = useCallback((peerId, updates) => {
+    const current = activePeersRef.current[peerId] || {};
+    const updated = { ...current, ...updates };
+    activePeersRef.current[peerId] = updated;
+    setPeers((prev) => ({
+      ...prev,
+      [peerId]: updated,
+    }));
+  }, []);
+
+  const flushCandidateQueue = useCallback(async (peerId, pc) => {
+    const queue = candidateQueues.current[peerId];
+    if (queue && queue.length > 0) {
+      candidateQueues.current[peerId] = [];
+      for (const cand of queue) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (err) {
+          console.warn(`[WebRTC] Failed to add queued ICE candidate for ${peerId}:`, err);
+        }
+      }
+    }
+  }, []);
+
+  const addIceCandidateSafely = useCallback(async (peerId, pc, candidate) => {
+    if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
+      if (!candidateQueues.current[peerId]) {
+        candidateQueues.current[peerId] = [];
+      }
+      candidateQueues.current[peerId].push(candidate);
+      return;
+    }
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.warn(`[WebRTC] Failed to add direct ICE candidate for ${peerId}:`, err);
+    }
+  }, []);
 
   const createPeerConnection = useCallback((peerId, remoteSocketId, isInitiator, peerName) => {
     return new Promise((resolve) => {
+      // Clean up previous connection if exists
+      const existing = activePeersRef.current[peerId];
+      if (existing?.pc) {
+        try {
+          existing.pc.close();
+        } catch {
+          // ignore close error
+        }
+      }
+
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       let dc = null;
-
-      const updatePeer = (updates) => {
-        setPeers((p) => ({
-          ...p,
-          [peerId]: { ...(p[peerId] || {}), ...updates },
-        }));
-      };
 
       const attachMessageForwarder = (channel) => {
         if (!channel) return;
@@ -39,14 +87,35 @@ export function PeerProvider({ children }) {
       if (isInitiator) {
         dc = pc.createDataChannel('zeronet', { ordered: true });
         attachMessageForwarder(dc);
-        dc.onopen = () => updatePeer({ dc, status: 'connected' });
-        dc.onclose = () => updatePeer({ status: 'disconnected' });
+        const handleOpen = () => {
+          console.log(`[WebRTC] DataChannel open (initiator) for ${peerId}`);
+          updatePeer(peerId, { dc, status: 'connected' });
+        };
+        dc.onopen = handleOpen;
+        dc.onclose = () => {
+          console.log(`[WebRTC] DataChannel closed for ${peerId}`);
+          updatePeer(peerId, { status: 'disconnected' });
+        };
+        if (dc.readyState === 'open') {
+          handleOpen();
+        }
       } else {
         pc.ondatachannel = (e) => {
           dc = e.channel;
+          console.log(`[WebRTC] ondatachannel received for ${peerId}, readyState: ${dc.readyState}`);
           attachMessageForwarder(dc);
-          dc.onopen = () => updatePeer({ dc, status: 'connected' });
-          dc.onclose = () => updatePeer({ status: 'disconnected' });
+          const handleOpen = () => {
+            console.log(`[WebRTC] DataChannel open (receiver) for ${peerId}`);
+            updatePeer(peerId, { dc, status: 'connected' });
+          };
+          dc.onopen = handleOpen;
+          dc.onclose = () => {
+            console.log(`[WebRTC] DataChannel closed for ${peerId}`);
+            updatePeer(peerId, { status: 'disconnected' });
+          };
+          if (dc.readyState === 'open') {
+            handleOpen();
+          }
         };
       }
 
@@ -54,111 +123,192 @@ export function PeerProvider({ children }) {
         if (e.candidate && socket) {
           socket.emit('webrtc-ice-candidate', {
             toSocketId: remoteSocketId,
+            toDeviceId: peerId,
             candidate: e.candidate,
           });
         }
       };
 
       pc.onconnectionstatechange = () => {
-        updatePeer({ status: pc.connectionState });
+        console.log(`[WebRTC] Connection state for ${peerId}: ${pc.connectionState}`);
+        if (pc.connectionState === 'connected') {
+          updatePeer(peerId, { status: 'connected' });
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          updatePeer(peerId, { status: 'disconnected' });
+        } else {
+          updatePeer(peerId, { status: pc.connectionState });
+        }
       };
 
-      setPeers((p) => ({
-        ...p,
-        [peerId]: {
-          pc,
-          dc: dc || null,
-          name: peerName || peerId,
-          status: 'connecting',
-          remoteSocketId,
-        },
+      pc.oniceconnectionstatechange = () => {
+        console.log(`[WebRTC] ICE state for ${peerId}: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          updatePeer(peerId, { status: 'connected' });
+        }
+      };
+
+      const peerRecord = {
+        pc,
+        dc: dc || null,
+        name: peerName || existing?.name || peerId,
+        status: 'connecting',
+        remoteSocketId,
+      };
+
+      activePeersRef.current[peerId] = peerRecord;
+      socketIdToPeerId.current[remoteSocketId] = peerId;
+      peerIdToSocketId.current[peerId] = remoteSocketId;
+
+      setPeers((prev) => ({
+        ...prev,
+        [peerId]: peerRecord,
       }));
 
-      socketIdToPeerId.current[remoteSocketId] = peerId;
-      if (!isInitiator) pendingPeerBySocketId.current[remoteSocketId] = { pc };
       resolve({ pc, dc, isInitiator });
     });
-  }, [socket]);
+  }, [socket, updatePeer]);
 
   const initiateConnection = useCallback((peerId, peerName, remoteSocketId) => {
+    if (remoteSocketId) {
+      socketIdToPeerId.current[remoteSocketId] = peerId;
+      peerIdToSocketId.current[peerId] = remoteSocketId;
+    }
+    updatePeer(peerId, {
+      name: peerName || peerId,
+      status: 'connecting',
+      remoteSocketId,
+    });
     socket.emit('request-connection', {
       fromDeviceId: deviceId,
       fromDeviceName: deviceName,
       toDeviceId: peerId,
     });
-  }, [socket, deviceId, deviceName]);
+  }, [socket, deviceId, deviceName, updatePeer]);
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('connection-request', ({ fromDeviceId, fromDeviceName, fromSocketId }) => {
+    const handleConnectionRequest = ({ fromDeviceId, fromDeviceName, fromSocketId }) => {
+      console.log(`[WebRTC] Incoming connection request from ${fromDeviceName} (${fromDeviceId})`);
+      socketIdToPeerId.current[fromSocketId] = fromDeviceId;
+      peerIdToSocketId.current[fromDeviceId] = fromSocketId;
       setIncomingRequest({ fromDeviceId, fromDeviceName, fromSocketId });
-    });
+    };
 
-    socket.on('connection-accepted', async ({ toSocketId, toDeviceId, toDeviceName }) => {
+    const handleConnectionAccepted = async ({ toSocketId, toDeviceId, toDeviceName }) => {
+      console.log(`[WebRTC] Connection accepted by ${toDeviceName} (${toDeviceId}) with socket ${toSocketId}`);
       const peerId = toDeviceId;
+      socketIdToPeerId.current[toSocketId] = peerId;
+      peerIdToSocketId.current[peerId] = toSocketId;
+
       const { pc } = await createPeerConnection(peerId, toSocketId, true, toDeviceName);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('webrtc-offer', { toSocketId, offer });
-    });
+      socket.emit('webrtc-offer', {
+        toSocketId,
+        toDeviceId: peerId,
+        offer,
+      });
+    };
 
-    socket.on('connection-rejected', () => {
+    const handleConnectionRejected = () => {
+      console.log('[WebRTC] Connection request rejected');
       setIncomingRequest(null);
-    });
+    };
 
-    socket.on('webrtc-offer', async ({ fromSocketId, offer }) => {
-      const fromDeviceId = socketIdToPeerId.current[fromSocketId];
-      const peerData = peersRef.current[fromDeviceId] ?? pendingPeerBySocketId.current[fromSocketId];
-      const pc = peerData?.pc;
-      if (!pc) return;
+    const handleWebRtcOffer = async ({ fromSocketId, toDeviceId, offer }) => {
+      console.log(`[WebRTC] Received offer from socket ${fromSocketId}`);
+      const peerId = socketIdToPeerId.current[fromSocketId] || toDeviceId;
+      if (!peerId) {
+        console.warn('[WebRTC] Cannot resolve peerId for received offer');
+        return;
+      }
+
+      let peer = activePeersRef.current[peerId];
+      let pc = peer?.pc;
+      if (!pc) {
+        console.log(`[WebRTC] Creating peer connection on offer for ${peerId}`);
+        const res = await createPeerConnection(peerId, fromSocketId, false);
+        pc = res.pc;
+      }
+
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushCandidateQueue(peerId, pc);
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      socket.emit('webrtc-answer', { toSocketId: fromSocketId, answer });
-      delete pendingPeerBySocketId.current[fromSocketId];
+
+      socket.emit('webrtc-answer', {
+        toSocketId: fromSocketId,
+        toDeviceId: peerId,
+        answer,
+      });
+
       setIncomingRequest(null);
-    });
+    };
 
-    socket.on('webrtc-answer', async ({ fromSocketId, answer }) => {
+    const handleWebRtcAnswer = async ({ fromSocketId, answer }) => {
+      console.log(`[WebRTC] Received answer from socket ${fromSocketId}`);
       const peerId = socketIdToPeerId.current[fromSocketId];
-      const peer = peerId && peersRef.current[peerId];
-      if (peer?.pc) {
-        await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
+      const peer = peerId ? activePeersRef.current[peerId] : null;
+      const pc = peer?.pc;
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        await flushCandidateQueue(peerId, pc);
+      } else {
+        console.warn(`[WebRTC] Peer connection not found for answer from ${fromSocketId}`);
       }
-    });
+    };
 
-    socket.on('webrtc-ice-candidate', async ({ fromSocketId, candidate }) => {
+    const handleWebRtcIceCandidate = async ({ fromSocketId, candidate }) => {
       const peerId = socketIdToPeerId.current[fromSocketId];
-      const peer = peerId && peersRef.current[peerId];
-      if (peer?.pc) {
-        await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
+      if (!peerId) {
+        console.warn(`[WebRTC] Unknown peer for ICE candidate from ${fromSocketId}`);
+        return;
       }
-    });
+      const peer = activePeersRef.current[peerId];
+      await addIceCandidateSafely(peerId, peer?.pc, candidate);
+    };
+
+    socket.on('connection-request', handleConnectionRequest);
+    socket.on('connection-accepted', handleConnectionAccepted);
+    socket.on('connection-rejected', handleConnectionRejected);
+    socket.on('webrtc-offer', handleWebRtcOffer);
+    socket.on('webrtc-answer', handleWebRtcAnswer);
+    socket.on('webrtc-ice-candidate', handleWebRtcIceCandidate);
 
     return () => {
-      socket.off('connection-request');
-      socket.off('connection-accepted');
-      socket.off('connection-rejected');
-      socket.off('webrtc-offer');
-      socket.off('webrtc-answer');
-      socket.off('webrtc-ice-candidate');
+      socket.off('connection-request', handleConnectionRequest);
+      socket.off('connection-accepted', handleConnectionAccepted);
+      socket.off('connection-rejected', handleConnectionRejected);
+      socket.off('webrtc-offer', handleWebRtcOffer);
+      socket.off('webrtc-answer', handleWebRtcAnswer);
+      socket.off('webrtc-ice-candidate', handleWebRtcIceCandidate);
     };
-  }, [socket, incomingRequest, createPeerConnection]);
+  }, [socket, createPeerConnection, flushCandidateQueue, addIceCandidateSafely]);
 
   const acceptRequest = useCallback(async () => {
-    if (!incomingRequest) return;
+    if (!incomingRequest) return null;
+    const { fromDeviceId, fromSocketId, fromDeviceName } = incomingRequest;
+    console.log(`[WebRTC] Accepting request from ${fromDeviceName} (${fromDeviceId})`);
+
+    socketIdToPeerId.current[fromSocketId] = fromDeviceId;
+    peerIdToSocketId.current[fromDeviceId] = fromSocketId;
+
     await createPeerConnection(
-      incomingRequest.fromDeviceId,
-      incomingRequest.fromSocketId,
+      fromDeviceId,
+      fromSocketId,
       false,
-      incomingRequest.fromDeviceName
+      fromDeviceName
     );
+
     socket.emit('connection-accepted', {
-      fromSocketId: incomingRequest.fromSocketId,
+      fromSocketId,
       toDeviceId: deviceId,
     });
+
     setIncomingRequest(null);
+    return fromDeviceId;
   }, [incomingRequest, socket, deviceId, createPeerConnection]);
 
   const rejectRequest = useCallback(() => {
@@ -169,7 +319,7 @@ export function PeerProvider({ children }) {
   }, [incomingRequest, socket]);
 
   const sendToPeer = useCallback((peerId, data) => {
-    const peer = peers[peerId];
+    const peer = activePeersRef.current[peerId] || peers[peerId];
     if (peer?.dc?.readyState === 'open') {
       peer.dc.send(data);
     }
@@ -177,7 +327,7 @@ export function PeerProvider({ children }) {
 
   const registerDataChannelHandler = useCallback((peerId, handler) => {
     dataChannelHandlers.current[peerId] = handler;
-    const peer = peersRef.current[peerId];
+    const peer = activePeersRef.current[peerId];
     if (peer?.dc) {
       peer.dc.onmessage = (e) => {
         const fn = dataChannelHandlers.current[peerId];

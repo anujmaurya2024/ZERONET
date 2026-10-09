@@ -126,14 +126,31 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
         ConnectedPeer current = connectedPeers.get(socketId);
         String currentDeviceName = current != null ? current.getDeviceName() : "Unknown Device";
+        if (toDeviceId.isEmpty() && current != null) {
+            toDeviceId = current.getDeviceId();
+        }
 
         ConnectedPeer target = connectedPeers.get(fromSocketId);
+        if (target == null && data.has("targetDeviceId")) {
+            String targetDeviceId = data.get("targetDeviceId").asText();
+            for (ConnectedPeer p : connectedPeers.values()) {
+                if (targetDeviceId.equals(p.getDeviceId())) {
+                    target = p;
+                    break;
+                }
+            }
+        }
+
         if (target != null && target.getSession().isOpen()) {
             ObjectNode payload = objectMapper.createObjectNode();
             payload.put("toSocketId", socketId);
             payload.put("toDeviceId", toDeviceId);
             payload.put("toDeviceName", currentDeviceName);
             sendToSession(target.getSession(), "connection-accepted", payload);
+            logger.info("Connection accepted from {} ({}) sent to {} ({})",
+                    socketId, toDeviceId, target.getSocketId(), target.getDeviceId());
+        } else {
+            logger.warn("Target not found for connection-accepted fromSocketId: {}", fromSocketId);
         }
     }
 
@@ -145,36 +162,66 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private ConnectedPeer findTargetPeer(JsonNode data, String toSocketId) {
+        ConnectedPeer target = connectedPeers.get(toSocketId);
+        if (target == null && data != null && data.has("toDeviceId")) {
+            String toDeviceId = data.get("toDeviceId").asText();
+            for (ConnectedPeer p : connectedPeers.values()) {
+                if (toDeviceId.equals(p.getDeviceId())) {
+                    return p;
+                }
+            }
+        }
+        return target;
+    }
+
     private void handleWebRtcOffer(WebSocketSession session, String socketId, JsonNode data) {
         String toSocketId = data.has("toSocketId") ? data.get("toSocketId").asText() : "";
-        ConnectedPeer target = connectedPeers.get(toSocketId);
+        ConnectedPeer target = findTargetPeer(data, toSocketId);
         if (target != null && target.getSession().isOpen()) {
             ObjectNode forward = objectMapper.createObjectNode();
             forward.put("fromSocketId", socketId);
+            if (data.has("toDeviceId")) {
+                forward.put("toDeviceId", data.get("toDeviceId").asText());
+            }
             forward.set("offer", data.get("offer"));
             sendToSession(target.getSession(), "webrtc-offer", forward);
+            logger.info("webrtc-offer relayed from {} to {}", socketId, target.getSocketId());
+        } else {
+            logger.warn("Target not found for webrtc-offer (toSocketId: {})", toSocketId);
         }
     }
 
     private void handleWebRtcAnswer(WebSocketSession session, String socketId, JsonNode data) {
         String toSocketId = data.has("toSocketId") ? data.get("toSocketId").asText() : "";
-        ConnectedPeer target = connectedPeers.get(toSocketId);
+        ConnectedPeer target = findTargetPeer(data, toSocketId);
         if (target != null && target.getSession().isOpen()) {
             ObjectNode forward = objectMapper.createObjectNode();
             forward.put("fromSocketId", socketId);
+            if (data.has("toDeviceId")) {
+                forward.put("toDeviceId", data.get("toDeviceId").asText());
+            }
             forward.set("answer", data.get("answer"));
             sendToSession(target.getSession(), "webrtc-answer", forward);
+            logger.info("webrtc-answer relayed from {} to {}", socketId, target.getSocketId());
+        } else {
+            logger.warn("Target not found for webrtc-answer (toSocketId: {})", toSocketId);
         }
     }
 
     private void handleWebRtcIceCandidate(WebSocketSession session, String socketId, JsonNode data) {
         String toSocketId = data.has("toSocketId") ? data.get("toSocketId").asText() : "";
-        ConnectedPeer target = connectedPeers.get(toSocketId);
+        ConnectedPeer target = findTargetPeer(data, toSocketId);
         if (target != null && target.getSession().isOpen()) {
             ObjectNode forward = objectMapper.createObjectNode();
             forward.put("fromSocketId", socketId);
+            if (data.has("toDeviceId")) {
+                forward.put("toDeviceId", data.get("toDeviceId").asText());
+            }
             forward.set("candidate", data.get("candidate"));
             sendToSession(target.getSession(), "webrtc-ice-candidate", forward);
+        } else {
+            logger.warn("Target not found for webrtc-ice-candidate (toSocketId: {})", toSocketId);
         }
     }
 
