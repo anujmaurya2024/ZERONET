@@ -164,7 +164,6 @@ export default function ChatWindow({ peerId, peerName }) {
               setInput(e.target.value);
               sendTyping(true);
             }}
-            onBlur={() => sendTyping(false)}
             placeholder="Team radio message..."
             className="flex-1 min-w-0 min-h-[44px] rounded-xl px-4 py-3 text-base focus:outline-none transition-all duration-200"
             style={{
@@ -178,6 +177,7 @@ export default function ChatWindow({ peerId, peerName }) {
               e.target.style.boxShadow = '0 0 0 2px rgba(225,6,0,0.12)';
             }}
             onBlur={e => {
+              sendTyping(false);
               e.target.style.borderColor = 'rgba(255,255,255,0.08)';
               e.target.style.boxShadow = 'none';
             }}
