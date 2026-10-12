@@ -1,19 +1,28 @@
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gauge, Check, X } from 'lucide-react';
+import { MessageSquare, Check, X, Wifi } from 'lucide-react';
 import { usePeer } from '../context/PeerContext';
+import { useChatContext } from '../context/ChatContext';
+import { getAvatarColor, getInitials } from '../utils/avatar';
 
 export default function ConnectionModal() {
   const navigate = useNavigate();
   const { incomingRequest, acceptRequest, rejectRequest } = usePeer();
+  const { setActivePeerId, markAsRead } = useChatContext();
 
   const handleAccept = async () => {
     const fromDeviceId = incomingRequest?.fromDeviceId;
     await acceptRequest();
     if (fromDeviceId) {
+      setActivePeerId(fromDeviceId);
+      markAsRead(fromDeviceId);
       navigate(`/chat/${fromDeviceId}`);
     }
   };
+
+  const peerName = incomingRequest?.fromDeviceName || 'Nearby User';
+  const avatarBg = getAvatarColor(peerName);
+  const initials = getInitials(peerName);
 
   return (
     <AnimatePresence>
@@ -24,8 +33,8 @@ export default function ConnectionModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+            className="fixed inset-0 z-50"
+            style={{ background: 'rgba(11, 20, 26, 0.85)', backdropFilter: 'blur(8px)' }}
             onClick={rejectRequest}
           />
 
@@ -34,115 +43,94 @@ export default function ConnectionModal() {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pointer-events-none"
+            transition={{ type: 'spring', damping: 24, stiffness: 320 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
             <div
-              className="w-full max-w-sm rounded-2xl p-6 pointer-events-auto relative overflow-hidden"
+              className="w-full max-w-sm rounded-2xl p-6 pointer-events-auto relative overflow-hidden text-center"
               style={{
-                background: '#181818',
-                border: '1px solid rgba(225,6,0,0.25)',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(225,6,0,0.1)',
+                background: '#111b21',
+                border: '1px solid rgba(0, 168, 132, 0.35)',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.85), 0 0 35px rgba(0, 168, 132, 0.15)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Top accent line */}
+              {/* WhatsApp Green Top Accent Line */}
               <div
-                className="absolute top-0 left-0 right-0 h-0.5"
-                style={{ background: 'linear-gradient(90deg, #e10600, rgba(225,6,0,0.3))' }}
+                className="absolute top-0 left-0 right-0 h-1"
+                style={{ background: 'linear-gradient(90deg, #00a884, #25d366)' }}
               />
 
-              {/* Decorative corner */}
-              <div
-                className="absolute top-0 right-0 w-20 h-20 opacity-10"
+              {/* In-Range Radar Badge */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-5"
                 style={{
-                  background: 'radial-gradient(circle, #e10600, transparent)',
-                }}
-              />
-
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-5">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                  style={{
-                    background: 'linear-gradient(135deg, #e10600, #a80400)',
-                    boxShadow: '0 0 16px rgba(225,6,0,0.3)',
-                  }}
-                >
-                  <Gauge className="w-6 h-6 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <p
-                    className="font-black text-sm tracking-widest uppercase"
-                    style={{ fontFamily: 'Orbitron, monospace', color: '#f0f0f0' }}
-                  >
-                    INCOMING REQUEST
-                  </p>
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: 'rgba(240,240,240,0.45)', fontFamily: 'Inter, sans-serif' }}
-                  >
-                    New driver wants to connect
-                  </p>
-                </div>
-              </div>
-
-              {/* Driver name */}
-              <div
-                className="mb-6 p-3 rounded-xl"
-                style={{
-                  background: 'rgba(225,6,0,0.06)',
-                  border: '1px solid rgba(225,6,0,0.15)',
+                  background: 'rgba(37, 211, 102, 0.12)',
+                  color: '#25d366',
+                  border: '1px solid rgba(37, 211, 102, 0.25)',
                 }}
               >
-                <p
-                  className="text-base font-bold break-words"
-                  style={{ fontFamily: 'Orbitron, monospace', color: '#e10600', letterSpacing: '0.04em' }}
-                >
-                  {incomingRequest?.fromDeviceName}
-                </p>
-                <p
-                  className="text-xs mt-0.5"
-                  style={{ color: 'rgba(240,240,240,0.45)', fontFamily: 'Inter, sans-serif' }}
-                >
-                  wants to open a team radio channel
-                </p>
+                <Wifi className="w-3.5 h-3.5 animate-pulse" />
+                <span>Within Range • Local Wi-Fi</span>
               </div>
+
+              {/* Peer Avatar with pulsating ring */}
+              <div className="relative mx-auto w-20 h-20 mb-4 flex items-center justify-center">
+                <div
+                  className="absolute inset-0 rounded-full wa-radar-pulse"
+                  style={{ background: 'rgba(0, 168, 132, 0.3)' }}
+                />
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg relative z-10"
+                  style={{
+                    background: avatarBg,
+                    border: '3px solid #111b21',
+                  }}
+                >
+                  {initials}
+                </div>
+              </div>
+
+              {/* Title & Name */}
+              <h2 className="text-xl font-bold text-white mb-1">
+                {peerName}
+              </h2>
+              <p className="text-sm mb-6" style={{ color: '#8696a0' }}>
+                is within range on your local network and wants to start a chat with you.
+              </p>
 
               {/* Actions */}
               <div className="flex gap-3">
                 <button
                   onClick={rejectRequest}
-                  className="flex-1 min-h-[48px] py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-200 touch-manipulation active:scale-95"
+                  className="flex-1 min-h-[46px] py-2.5 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all duration-150 touch-manipulation active:scale-95 text-sm"
                   style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'rgba(240,240,240,0.6)',
-                    fontFamily: 'Orbitron, monospace',
-                    fontSize: '11px',
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
+                    background: '#202c33',
+                    border: '1px solid rgba(134, 150, 160, 0.2)',
+                    color: '#8696a0',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#e9edef';
+                    e.currentTarget.style.background = '#2a3942';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#8696a0';
+                    e.currentTarget.style.background = '#202c33';
                   }}
                 >
                   <X className="w-4 h-4 shrink-0" />
-                  REJECT
+                  Decline
                 </button>
+
                 <button
                   onClick={handleAccept}
-                  className="flex-1 min-h-[48px] py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-200 touch-manipulation active:scale-95"
+                  className="flex-1 min-h-[46px] py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-150 touch-manipulation active:scale-95 text-sm text-white"
                   style={{
-                    background: 'linear-gradient(135deg, #e10600, #a80400)',
-                    border: '1px solid rgba(225,6,0,0.5)',
-                    color: '#fff',
-                    fontFamily: 'Orbitron, monospace',
-                    fontSize: '11px',
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    boxShadow: '0 0 16px rgba(225,6,0,0.3)',
+                    background: 'linear-gradient(135deg, #00a884, #008069)',
+                    boxShadow: '0 4px 18px rgba(0, 168, 132, 0.4)',
                   }}
                 >
                   <Check className="w-4 h-4 shrink-0" />
-                  ACCEPT
+                  Accept & Chat
                 </button>
               </div>
             </div>

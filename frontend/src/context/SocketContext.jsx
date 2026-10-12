@@ -3,9 +3,41 @@ import { useDiscovery } from './DiscoveryContext';
 
 const SocketContext = createContext(null);
 
-const DEVICE_ID = `driver-${Math.random().toString(36).slice(2, 9)}`;
-const DRIVER_NUMBER = Math.floor(10 + Math.random() * 89);
-const DEVICE_NAME = `Driver #${DRIVER_NUMBER}`;
+function getInitialDeviceId() {
+  if (typeof window === 'undefined') return `wa_${Math.random().toString(36).slice(2, 8)}`;
+  let id = localStorage.getItem('zeronet_device_id');
+  if (!id) {
+    id = `wa_${Math.random().toString(36).slice(2, 9)}`;
+    try {
+      localStorage.setItem('zeronet_device_id', id);
+    } catch {}
+  }
+  return id;
+}
+
+function detectPlatformName() {
+  if (typeof window === 'undefined') return 'User';
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/.test(ua)) return 'iPhone';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Mac/.test(ua)) return 'MacBook';
+  if (/Windows/.test(ua)) return 'Windows PC';
+  if (/Linux/.test(ua)) return 'Linux Device';
+  return 'Mobile';
+}
+
+function getInitialDeviceName() {
+  if (typeof window === 'undefined') return 'WhatsApp User';
+  let name = localStorage.getItem('zeronet_device_name');
+  if (!name) {
+    const platform = detectPlatformName();
+    name = `${platform} (${Math.floor(100 + Math.random() * 900)})`;
+    try {
+      localStorage.setItem('zeronet_device_name', name);
+    } catch {}
+  }
+  return name;
+}
 
 class ZeronetSocket {
   constructor(serverUrl) {
@@ -111,7 +143,21 @@ export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [onlineDevices, setOnlineDevices] = useState([]);
+  const [deviceId] = useState(getInitialDeviceId);
+  const [deviceName, setDeviceName] = useState(getInitialDeviceName);
   const socketRef = useRef(null);
+
+  const updateDeviceName = useCallback((newName) => {
+    if (!newName || !newName.trim()) return;
+    const trimmed = newName.trim();
+    setDeviceName(trimmed);
+    try {
+      localStorage.setItem('zeronet_device_name', trimmed);
+    } catch {}
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('register', { deviceId, deviceName: trimmed });
+    }
+  }, [deviceId]);
 
   useEffect(() => {
     if (!serverUrl) return;
@@ -120,7 +166,7 @@ export function SocketProvider({ children }) {
 
     s.on('connect', () => {
       setConnected(true);
-      s.emit('register', { deviceId: DEVICE_ID, deviceName: DEVICE_NAME });
+      s.emit('register', { deviceId, deviceName });
       s.emit('get-online-devices');
     });
 
@@ -130,15 +176,21 @@ export function SocketProvider({ children }) {
       setOnlineDevices(devices || []);
     });
 
-    s.on('device-online', ({ deviceId, deviceName, socketId }) => {
+    s.on('device-online', ({ deviceId: incomingDeviceId, deviceName: incomingName, socketId }) => {
       setOnlineDevices((prev) => {
-        if (prev.some((d) => d.deviceId === deviceId)) return prev;
-        return [...prev, { deviceId, deviceName, socketId }];
+        if (incomingDeviceId === deviceId) return prev;
+        const exists = prev.some((d) => d.deviceId === incomingDeviceId);
+        if (exists) {
+          return prev.map((d) =>
+            d.deviceId === incomingDeviceId ? { ...d, deviceName: incomingName, socketId } : d
+          );
+        }
+        return [...prev, { deviceId: incomingDeviceId, deviceName: incomingName, socketId }];
       });
     });
 
-    s.on('device-offline', ({ deviceId }) => {
-      setOnlineDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
+    s.on('device-offline', ({ deviceId: offlineId }) => {
+      setOnlineDevices((prev) => prev.filter((d) => d.deviceId !== offlineId));
     });
 
     setSocket(s);
@@ -149,17 +201,17 @@ export function SocketProvider({ children }) {
       setConnected(false);
       setOnlineDevices([]);
     };
-  }, [serverUrl]);
+  }, [serverUrl, deviceId, deviceName]);
 
   const requestConnection = useCallback((toDeviceId, toSocketId) => {
     if (!socketRef.current) return;
     socketRef.current.emit('request-connection', {
-      fromDeviceId: DEVICE_ID,
-      fromDeviceName: DEVICE_NAME,
+      fromDeviceId: deviceId,
+      fromDeviceName: deviceName,
       toDeviceId,
       toSocketId,
     });
-  }, []);
+  }, [deviceId, deviceName]);
 
   const acceptConnection = useCallback((fromSocketId, toDeviceId) => {
     if (!socketRef.current) return;
@@ -179,8 +231,9 @@ export function SocketProvider({ children }) {
     socket,
     connected,
     onlineDevices,
-    deviceId: DEVICE_ID,
-    deviceName: DEVICE_NAME,
+    deviceId,
+    deviceName,
+    updateDeviceName,
     requestConnection,
     acceptConnection,
     rejectConnection,

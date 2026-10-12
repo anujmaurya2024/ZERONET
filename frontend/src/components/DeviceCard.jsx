@@ -1,149 +1,132 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Gauge, Loader2, ChevronRight } from 'lucide-react';
+import { MessageSquare, Wifi, Loader2, Smartphone, Laptop } from 'lucide-react';
 import { usePeer } from '../context/PeerContext';
+import { useChatContext } from '../context/ChatContext';
+import { getAvatarColor, getInitials } from '../utils/avatar';
 
-export default function DeviceCard({ device, index }) {
+export default function DeviceCard({ device, index, onSelectPeer }) {
   const navigate = useNavigate();
   const { initiateConnection, peers } = usePeer();
+  const { setActivePeerId } = useChatContext();
+
   const peer = peers[device.deviceId];
-  const isConnecting = peer?.status === 'connecting';
+  const isConnecting = peer?.status === 'connecting' || peer?.status === 'requested';
   const isConnected = peer?.status === 'connected';
 
-  const handleConnect = () => {
+  const peerName = device.deviceName || 'Nearby Device';
+  const avatarBg = getAvatarColor(peerName);
+  const initials = getInitials(peerName);
+
+  const isPhone = /iPhone|Android|Mobile/i.test(peerName);
+
+  const handleStartChat = () => {
+    setActivePeerId(device.deviceId);
+
     if (isConnected) {
-      navigate(`/chat/${device.deviceId}`);
+      if (onSelectPeer) {
+        onSelectPeer(device.deviceId);
+      } else {
+        navigate(`/chat/${device.deviceId}`);
+      }
       return;
     }
-    if (isConnecting) return;
+
+    if (isConnecting) {
+      if (onSelectPeer) {
+        onSelectPeer(device.deviceId);
+      } else {
+        navigate(`/chat/${device.deviceId}`);
+      }
+      return;
+    }
+
     initiateConnection(device.deviceId, device.deviceName, device.socketId);
-    navigate(`/chat/${device.deviceId}`);
+    if (onSelectPeer) {
+      onSelectPeer(device.deviceId);
+    } else {
+      navigate(`/chat/${device.deviceId}`);
+    }
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.07, duration: 0.35 }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.25 }}
       whileTap={{ scale: 0.98 }}
-      className="relative overflow-hidden rounded-xl flex items-center justify-between gap-3 sm:gap-4 p-4 transition-all duration-200 cursor-pointer group"
+      onClick={handleStartChat}
+      className="flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl cursor-pointer transition-all duration-150 group"
       style={{
-        background: '#181818',
-        border: '1px solid rgba(255,255,255,0.07)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        background: '#111b21',
+        border: '1px solid rgba(134, 150, 160, 0.12)',
       }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = 'rgba(225,6,0,0.3)';
-        e.currentTarget.style.boxShadow = '0 4px 28px rgba(225,6,0,0.1)';
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = '#202c33';
+        e.currentTarget.style.borderColor = 'rgba(0, 168, 132, 0.3)';
       }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
-        e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.4)';
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = '#111b21';
+        e.currentTarget.style.borderColor = 'rgba(134, 150, 160, 0.12)';
       }}
-      onClick={handleConnect}
     >
-      {/* Top accent line */}
-      <div
-        className="absolute top-0 left-0 h-0.5 transition-all duration-300"
-        style={{
-          width: isConnected ? '100%' : '30%',
-          background: isConnected
-            ? 'linear-gradient(90deg, #00d2ff, #00d2ff80)'
-            : 'linear-gradient(90deg, #e10600, transparent)',
-        }}
-      />
-
-      {/* Left: Icon + info */}
-      <div className="flex items-center gap-3.5 min-w-0 flex-1">
-        {/* Device icon */}
+      {/* Left: Avatar with live in-range indicator */}
+      <div className="relative shrink-0">
         <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200 group-hover:scale-110"
-          style={{
-            background: isConnected
-              ? 'rgba(0,210,255,0.1)'
-              : 'rgba(225,6,0,0.1)',
-            border: `1px solid ${isConnected ? 'rgba(0,210,255,0.25)' : 'rgba(225,6,0,0.2)'}`,
-          }}
+          className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md"
+          style={{ background: avatarBg }}
         >
-          <Gauge
-            className="w-5 h-5"
-            style={{ color: isConnected ? '#00d2ff' : '#e10600' }}
-          />
+          {initials}
+        </div>
+        <span
+          className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[#111b21] bg-[#25d366]"
+          title="In range and online"
+        />
+      </div>
+
+      {/* Middle: Name & In-range details */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          {isPhone ? (
+            <Smartphone className="w-3.5 h-3.5 text-[#8696a0]" />
+          ) : (
+            <Laptop className="w-3.5 h-3.5 text-[#8696a0]" />
+          )}
+          <h3 className="text-sm font-semibold text-[#e9edef] truncate">
+            {peerName}
+          </h3>
         </div>
 
-        {/* Device info */}
-        <div className="min-w-0 flex-1">
-          <p
-            className="font-bold truncate text-sm"
-            style={{ color: '#f0f0f0', fontFamily: 'Orbitron, monospace', letterSpacing: '0.03em' }}
-          >
-            {device.deviceName}
-          </p>
-          <p
-            className="text-xs truncate mt-0.5"
-            style={{ color: 'rgba(240,240,240,0.35)', fontFamily: 'Inter, monospace' }}
-          >
-            {device.deviceId}
-          </p>
-
-          {/* Status pill */}
-          {isConnected && (
-            <div
-              className="inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tracking-widest uppercase"
-              style={{
-                fontFamily: 'Orbitron, monospace',
-                background: 'rgba(0,210,255,0.08)',
-                color: '#00d2ff',
-                border: '1px solid rgba(0,210,255,0.2)',
-                fontSize: '9px',
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: '#00d2ff', boxShadow: '0 0 4px #00d2ff' }}
-              />
-              LINKED
-            </div>
-          )}
+        <div className="flex items-center gap-1.5 text-xs text-[#8696a0]">
+          <Wifi className="w-3 h-3 text-[#25d366]" />
+          <span className="text-[#25d366] font-medium">In Range</span>
+          <span>•</span>
+          <span className="truncate">Local Network</span>
         </div>
       </div>
 
-      {/* Right: Connect button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); handleConnect(); }}
-        disabled={isConnecting}
-        className="shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 touch-manipulation active:scale-95 disabled:opacity-50"
-        style={{
-          background: isConnected
-            ? 'rgba(0,210,255,0.1)'
-            : 'linear-gradient(135deg, #e10600, #a80400)',
-          border: isConnected
-            ? '1px solid rgba(0,210,255,0.3)'
-            : '1px solid rgba(225,6,0,0.5)',
-          color: isConnected ? '#00d2ff' : '#fff',
-          fontFamily: 'Orbitron, monospace',
-          fontSize: '10px',
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          boxShadow: isConnected ? 'none' : '0 0 10px rgba(225,6,0,0.2)',
-        }}
-      >
-        {isConnecting ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span className="hidden sm:inline">LINKING</span>
-          </>
-        ) : isConnected ? (
-          <>
-            <span>RACE</span>
-            <ChevronRight className="w-4 h-4" />
-          </>
+      {/* Right: Action button */}
+      <div>
+        {isConnected ? (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#00a884]/15 text-[#25d366] border border-[#00a884]/30">
+            <MessageSquare className="w-3.5 h-3.5" />
+            Chat
+          </span>
+        ) : isConnecting ? (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#202c33] text-[#8696a0] border border-white/10">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00a884]" />
+            Connecting
+          </span>
         ) : (
-          <>
-            <span>CONNECT</span>
-          </>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-[#00a884] text-white hover:bg-[#008069] shadow-sm transition-colors active:scale-95"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Start Chat
+          </button>
         )}
-      </button>
+      </div>
     </motion.div>
   );
 }

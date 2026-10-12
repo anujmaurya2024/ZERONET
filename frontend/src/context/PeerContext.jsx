@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useSocket } from './SocketContext';
+import { playIncomingRequestAlert } from '../utils/sound';
 
 const PeerContext = createContext(null);
 
@@ -203,6 +204,7 @@ export function PeerProvider({ children }) {
       console.log(`[WebRTC] Incoming connection request from ${fromDeviceName} (${fromDeviceId})`);
       socketIdToPeerId.current[fromSocketId] = fromDeviceId;
       peerIdToSocketId.current[fromDeviceId] = fromSocketId;
+      playIncomingRequestAlert();
       setIncomingRequest({ fromDeviceId, fromDeviceName, fromSocketId });
     };
 
@@ -218,6 +220,10 @@ export function PeerProvider({ children }) {
         status: 'connected',
         remoteSocketId: toSocketId,
       });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('zeronet:connection-accepted', { detail: { peerId } }));
+      }
 
       const { pc } = await createPeerConnection(peerId, toSocketId, true, toDeviceName);
       const offer = await pc.createOffer();
