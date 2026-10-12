@@ -16,6 +16,10 @@ import {
   Trash2,
   Square,
   X,
+  Globe,
+  Languages,
+  Sparkles,
+  Edit3,
 } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import FileMessage from './FileMessage';
@@ -23,8 +27,10 @@ import ImageMessage from './ImageMessage';
 import VoiceMessage from './VoiceMessage';
 import TypingIndicator from './TypingIndicator';
 import FileUpload from './FileUpload';
+import TechnicalExplanationModal from './TechnicalExplanationModal';
 import { useChatContext } from '../context/ChatContext';
 import { usePeer } from '../context/PeerContext';
+import { useTranslation, SUPPORTED_LANGUAGES } from '../context/TranslationContext';
 import { getAvatarColor, getInitials } from '../utils/avatar';
 
 const EMOJI_LIST = [
@@ -49,6 +55,12 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
   } = useChatContext();
 
   const { peers } = usePeer();
+  const {
+    settings,
+    previewTranslation,
+    setIsSettingsOpen,
+  } = useTranslation();
+
   const peer = peerId ? peers[peerId] : null;
   const isConnected = peer?.status === 'connected';
   const isConnecting = peer?.status === 'connecting' || peer?.status === 'requested';
@@ -60,6 +72,12 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
   const [showEmojis, setShowEmojis] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+
+  // Outgoing Translation State
+  const [selectedTargetLang, setSelectedTargetLang] = useState(settings.defaultOutgoingLanguage || 'hi');
+  const [isTranslatingDraft, setIsTranslatingDraft] = useState(false);
+  const [translationPreview, setTranslationPreview] = useState(null); // { original, translated, targetLang }
+  const [editedTranslation, setEditedTranslation] = useState('');
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -101,6 +119,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
     if (!input.trim() || !isConnected) return;
     sendMessage(peerId, input.trim());
     setInput('');
+    setTranslationPreview(null);
     setShowEmojis(false);
     sendTyping(peerId, false);
   };
@@ -110,6 +129,41 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Preview Outgoing Translation
+  const handlePreviewTranslation = async () => {
+    if (!input.trim()) return;
+    setIsTranslatingDraft(true);
+    const res = await previewTranslation(input.trim(), 'auto', selectedTargetLang);
+    setIsTranslatingDraft(false);
+    if (res && res.translatedText) {
+      setTranslationPreview({
+        original: input.trim(),
+        translated: res.translatedText,
+        sourceLang: res.sourceLanguage,
+        targetLang: selectedTargetLang,
+      });
+      setEditedTranslation(res.translatedText);
+    }
+  };
+
+  const handleSendTranslatedOnly = () => {
+    const textToSend = editedTranslation.trim() || translationPreview?.translated || input.trim();
+    if (!textToSend || !isConnected) return;
+    sendMessage(peerId, textToSend);
+    setInput('');
+    setTranslationPreview(null);
+    sendTyping(peerId, false);
+  };
+
+  const handleSendBoth = () => {
+    if (!translationPreview || !isConnected) return;
+    const combined = `${translationPreview.original}\n\n[🌐 Translation]: ${editedTranslation.trim() || translationPreview.translated}`;
+    sendMessage(peerId, combined);
+    setInput('');
+    setTranslationPreview(null);
+    sendTyping(peerId, false);
   };
 
   const handleEmojiSelect = (emoji) => {
@@ -158,12 +212,10 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
       }, 1000);
     } catch (err) {
       console.warn('Microphone permission or support error:', err);
-      // Fallback simulated voice note if user tests in environment without microphone permission
       const confirmed = window.confirm(
-        'Microphone is not accessible or permission was not granted. Would you like to send a simulated voice note to test audio delivery?'
+        'Microphone permission not granted. Send a simulated voice note to test audio delivery?'
       );
       if (confirmed) {
-        // Create an audio context beep blob
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const dst = ctx.createMediaStreamDestination();
@@ -218,7 +270,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
     <div className="flex flex-col h-full w-full bg-[#0b141a] overflow-hidden select-none">
       {/* WhatsApp Chat Header */}
       <div
-        className="shrink-0 flex items-center justify-between px-4 py-2.5 min-h-[58px] z-10"
+        className="shrink-0 flex items-center justify-between px-3 sm:px-4 py-2.5 min-h-[58px] z-10"
         style={{
           background: '#202c33',
           borderBottom: '1px solid rgba(134, 150, 160, 0.15)',
@@ -263,6 +315,17 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
 
         {/* Header Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-2 text-[#aebac1]">
+          {/* Language & Translation Settings Button */}
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 rounded-full hover:bg-[#2a3942] text-[#25d366] hover:text-white transition-colors flex items-center gap-1 text-xs"
+            title="Translation & AI Language Settings"
+          >
+            <Globe className="w-5 h-5" />
+            <span className="hidden lg:inline font-semibold">Translate</span>
+          </button>
+
           <button
             type="button"
             className="p-2 rounded-full hover:bg-[#2a3942] transition-colors"
@@ -291,12 +354,23 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
 
             {showOptionsMenu && (
               <div
-                className="absolute right-0 top-10 w-44 rounded-xl py-1 z-30 shadow-2xl"
+                className="absolute right-0 top-10 w-48 rounded-xl py-1 z-30 shadow-2xl"
                 style={{
                   background: '#233138',
                   border: '1px solid rgba(134, 150, 160, 0.15)',
                 }}
               >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsOpen(true);
+                    setShowOptionsMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-[#e9edef] hover:bg-[#182229] flex items-center gap-2"
+                >
+                  <Languages className="w-4 h-4 text-[#25d366]" />
+                  Language Settings
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -324,7 +398,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
         }}
       >
         {/* End-to-end Local Network Notice */}
-        <div className="flex justify-center my-3">
+        <div className="flex justify-center my-2">
           <div
             className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-center max-w-md shadow-sm"
             style={{
@@ -335,7 +409,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
             }}
           >
             <Lock className="w-3.5 h-3.5 shrink-0" />
-            <span>Messages are transferred directly between devices in range (P2P). No internet used.</span>
+            <span>Messages are transferred directly peer-to-peer with AI real-time translation.</span>
           </div>
         </div>
 
@@ -430,6 +504,71 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
         </div>
       )}
 
+      {/* --- OUTGOING TRANSLATION PREVIEW CARD (User Experience Section 2.C) --- */}
+      {translationPreview && (
+        <div
+          className="shrink-0 p-3 bg-[#182229] border-t border-[rgba(0,168,132,0.3)] shadow-lg z-20"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-[#25d366] flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5" />
+              Translation Preview (Target: {SUPPORTED_LANGUAGES.find((l) => l.code === translationPreview.targetLang)?.name})
+            </span>
+            <button
+              type="button"
+              onClick={() => setTranslationPreview(null)}
+              className="p-1 rounded text-[#8696a0] hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-2 mb-3">
+            <div className="text-xs text-[#8696a0] bg-[#111b21] p-2 rounded-lg border border-[rgba(134,150,160,0.1)]">
+              <span className="font-semibold text-[#aebac1]">Original:</span> {translationPreview.original}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-[#aebac1] flex items-center gap-1">
+                <Edit3 className="w-3 h-3 text-[#25d366]" />
+                Translated Text (editable before sending):
+              </label>
+              <textarea
+                value={editedTranslation}
+                onChange={(e) => setEditedTranslation(e.target.value)}
+                rows={2}
+                className="w-full text-sm p-2.5 rounded-lg bg-[#202c33] text-[#e9edef] border border-[rgba(134,150,160,0.2)] focus:border-[#00a884] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setTranslationPreview(null)}
+              className="px-3 py-1.5 rounded-lg bg-[#202c33] text-[#8696a0] hover:text-white font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSendBoth}
+              className="px-3 py-1.5 rounded-lg bg-[#2a3942] text-[#e9edef] hover:bg-[#34444d] font-semibold border border-[rgba(134,150,160,0.2)]"
+            >
+              Send Both (Original + Translation)
+            </button>
+            <button
+              type="button"
+              onClick={handleSendTranslatedOnly}
+              className="px-3.5 py-1.5 rounded-lg bg-[#00a884] text-white hover:bg-[#008069] font-bold shadow-md flex items-center gap-1"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Send Translated
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* WhatsApp Input Bar */}
       <div
         className="shrink-0 px-3 py-2.5 relative z-20"
@@ -438,6 +577,39 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
           borderTop: '1px solid rgba(134, 150, 160, 0.15)',
         }}
       >
+        {/* Outgoing Language Bar selector */}
+        <div className="flex items-center justify-between pb-2 mb-1 border-b border-[rgba(134,150,160,0.1)] text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[#8696a0] flex items-center gap-1">
+              <Languages className="w-3.5 h-3.5 text-[#25d366]" />
+              Translate to:
+            </span>
+            <select
+              value={selectedTargetLang}
+              onChange={(e) => setSelectedTargetLang(e.target.value)}
+              className="bg-[#111b21] text-[#e9edef] rounded-md px-2 py-0.5 border border-[rgba(134,150,160,0.2)] focus:outline-none cursor-pointer"
+            >
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name} ({lang.nativeName})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {input.trim() && (
+            <button
+              type="button"
+              onClick={handlePreviewTranslation}
+              disabled={isTranslatingDraft}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#00a884]/20 text-[#25d366] hover:bg-[#00a884]/30 font-semibold transition-colors disabled:opacity-50"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>{isTranslatingDraft ? 'Translating...' : 'Preview Translation'}</span>
+            </button>
+          )}
+        </div>
+
         {/* Hidden File and Image inputs */}
         <input
           type="file"
@@ -544,7 +716,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a message"
+                placeholder="Type a message (multilingual translation available)"
                 className="w-full py-2.5 px-4 rounded-lg bg-[#2a3942] text-[#e9edef] placeholder-[#8696a0] focus:outline-none text-[15px]"
               />
             </div>
@@ -555,7 +727,7 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
                 type="button"
                 onClick={handleSend}
                 className="w-10 h-10 rounded-full flex items-center justify-center bg-[#00a884] text-white hover:bg-[#008069] transition-all shadow-md active:scale-95 shrink-0"
-                title="Send"
+                title="Send Message"
               >
                 <Send className="w-4 h-4 ml-0.5" />
               </button>
@@ -572,6 +744,9 @@ export default function ChatWindow({ peerId, peerName, onBack }) {
           </div>
         )}
       </div>
+
+      {/* AI Technical Term Explanation Modal */}
+      <TechnicalExplanationModal />
     </div>
   );
 }

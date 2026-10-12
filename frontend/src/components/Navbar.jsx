@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, Wifi, Edit2, Check, X, Shield, RefreshCw } from 'lucide-react';
+import { MessageCircle, Wifi, Edit2, Check, X, Shield, RefreshCw, Languages } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 import { useDiscovery } from '../context/DiscoveryContext';
+import { useTranslation, SUPPORTED_LANGUAGES } from '../context/TranslationContext';
 import { getAvatarColor, getInitials } from '../utils/avatar';
 
 export default function Navbar() {
   const { deviceName, updateDeviceName, connected } = useSocket();
   const { isScanning, discoverServers, serverUrl } = useDiscovery();
+  const { settings, setIsSettingsOpen } = useTranslation();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(deviceName);
@@ -78,6 +80,19 @@ export default function Navbar() {
                 {connected ? 'Within Range' : 'Connecting'}
               </span>
             </div>
+
+            {/* Translation & Language Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#111b21] hover:bg-[#2a3942] border border-[rgba(0,168,132,0.3)] text-[#25d366] transition-colors cursor-pointer group"
+              title="Translation & Multilingual Settings"
+            >
+              <Languages className="w-4 h-4 transition-transform group-hover:scale-110" />
+              <span className="text-xs font-bold text-[#e9edef] uppercase tracking-wider">
+                {settings?.preferredIncomingLanguage || 'EN'}
+              </span>
+            </button>
 
             {/* User Profile Chip (Click to Edit Name) */}
             <button

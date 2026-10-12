@@ -6,6 +6,7 @@ import { SocketProvider } from './context/SocketContext';
 import { DiscoveryProvider } from './context/DiscoveryContext';
 import { PeerProvider } from './context/PeerContext';
 import { ChatProvider } from './context/ChatContext';
+import { TranslationProvider } from './context/TranslationContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -15,7 +16,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <SocketProvider>
           <PeerProvider>
             <ChatProvider>
-              <App />
+              <TranslationProvider>
+                <App />
+              </TranslationProvider>
             </ChatProvider>
           </PeerProvider>
         </SocketProvider>

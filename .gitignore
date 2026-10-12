@@ -49,3 +49,9 @@ Thumbs.db
 .cache/
 .eslintcache
 .parcel-cache/
+
+# Databases
+backend/data/
+*.mv.db
+*.trace.db
+
