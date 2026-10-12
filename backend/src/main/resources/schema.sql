@@ -62,3 +62,89 @@ CREATE TABLE IF NOT EXISTS technical_term_explanations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_explanations_msg ON technical_term_explanations(message_id);
+
+-- ==============================================================================
+-- 5. Mobile Number Accounts & Verification
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS user_phone_accounts (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    phone_number_e164 VARCHAR(30) NOT NULL,
+    country_code VARCHAR(10) NOT NULL DEFAULT '+91',
+    display_name VARCHAR(100),
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    verified_at BIGINT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    CONSTRAINT uq_phone_user UNIQUE (user_id),
+    CONSTRAINT uq_verified_phone UNIQUE (phone_number_e164)
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_user ON user_phone_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_phone_e164 ON user_phone_accounts(phone_number_e164);
+
+-- 6. OTP Verifications (Cryptographically hashed, salted, rate-limited)
+CREATE TABLE IF NOT EXISTS phone_otp_verifications (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    phone_number_e164 VARCHAR(30) NOT NULL,
+    otp_hash VARCHAR(128) NOT NULL,
+    salt VARCHAR(64) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    expires_at BIGINT NOT NULL,
+    last_sent_at BIGINT NOT NULL,
+    created_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_otp_phone ON phone_otp_verifications(phone_number_e164);
+CREATE INDEX IF NOT EXISTS idx_otp_user ON phone_otp_verifications(user_id);
+
+-- 7. User Privacy Settings
+CREATE TABLE IF NOT EXISTS user_privacy_settings (
+    user_id VARCHAR(64) PRIMARY KEY,
+    discovery_visibility VARCHAR(20) NOT NULL DEFAULT 'EVERYONE',
+    phone_visibility VARCHAR(20) NOT NULL DEFAULT 'CONTACTS',
+    allow_contact_discovery BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_message_requests BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+);
+
+-- 8. User Address Book Contacts
+CREATE TABLE IF NOT EXISTS user_contacts (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    contact_phone_e164 VARCHAR(30) NOT NULL,
+    contact_name VARCHAR(100) NOT NULL,
+    created_at BIGINT NOT NULL,
+    CONSTRAINT uq_user_contact UNIQUE (user_id, contact_phone_e164)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON user_contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_phone ON user_contacts(contact_phone_e164);
+
+-- 9. User Blocks & Moderation
+CREATE TABLE IF NOT EXISTS user_blocks (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    blocked_user_id VARCHAR(64) NOT NULL,
+    reason VARCHAR(255),
+    created_at BIGINT NOT NULL,
+    CONSTRAINT uq_user_block UNIQUE (user_id, blocked_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocks_user ON user_blocks(user_id);
+
+-- 10. Direct Conversations (Prevents duplicate 1-to-1 conversations)
+CREATE TABLE IF NOT EXISTS direct_conversations (
+    id VARCHAR(64) PRIMARY KEY,
+    user_one_id VARCHAR(64) NOT NULL,
+    user_two_id VARCHAR(64) NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    CONSTRAINT uq_direct_pair UNIQUE (user_one_id, user_two_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_direct_user_one ON direct_conversations(user_one_id);
+CREATE INDEX IF NOT EXISTS idx_direct_user_two ON direct_conversations(user_two_id);
+

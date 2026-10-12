@@ -7,6 +7,7 @@ public class ConnectedPeer {
     private String socketId;
     private String deviceId;
     private String deviceName;
+    private String phoneNumber;
 
     @JsonIgnore
     private WebSocketSession session;
@@ -18,6 +19,14 @@ public class ConnectedPeer {
         this.deviceId = deviceId;
         this.deviceName = deviceName;
         this.session = session;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
     }
 
     public String getSocketId() {

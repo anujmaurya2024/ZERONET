@@ -64,17 +64,22 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     private void handleRegister(WebSocketSession session, String socketId, JsonNode data) {
         String deviceId = data.has("deviceId") ? data.get("deviceId").asText() : socketId;
         String deviceName = data.has("deviceName") ? data.get("deviceName").asText() : "Unknown Device";
+        String phoneNumber = data.has("phoneNumber") && !data.get("phoneNumber").isNull() ? data.get("phoneNumber").asText() : null;
 
         ConnectedPeer peer = new ConnectedPeer(socketId, deviceId, deviceName, session);
+        peer.setPhoneNumber(phoneNumber);
         connectedPeers.put(socketId, peer);
 
-        logger.info("Device registered: {} ({}) with socketId {}", deviceName, deviceId, socketId);
+        logger.info("Device registered: {} ({}) [phone: {}] with socketId {}", deviceName, deviceId, phoneNumber, socketId);
 
         // Broadcast device-online to everyone else
         ObjectNode broadcastData = objectMapper.createObjectNode();
         broadcastData.put("deviceId", deviceId);
         broadcastData.put("deviceName", deviceName);
         broadcastData.put("socketId", socketId);
+        if (phoneNumber != null) {
+            broadcastData.put("phoneNumber", phoneNumber);
+        }
         broadcast("device-online", broadcastData, socketId);
     }
 
@@ -88,6 +93,9 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 deviceObj.put("socketId", peer.getSocketId());
                 deviceObj.put("deviceId", peer.getDeviceId());
                 deviceObj.put("deviceName", peer.getDeviceName());
+                if (peer.getPhoneNumber() != null) {
+                    deviceObj.put("phoneNumber", peer.getPhoneNumber());
+                }
                 devicesArray.add(deviceObj);
             }
         }

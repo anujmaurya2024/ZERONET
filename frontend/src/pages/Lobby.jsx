@@ -20,6 +20,7 @@ import { useSocket } from '../context/SocketContext';
 import { useDiscovery } from '../context/DiscoveryContext';
 import { usePeer } from '../context/PeerContext';
 import { useChatContext } from '../context/ChatContext';
+import { usePhoneAuth } from '../context/PhoneAuthContext';
 import { getAvatarColor, getInitials } from '../utils/avatar';
 import { format } from 'date-fns';
 
@@ -36,9 +37,24 @@ export default function Lobby() {
     getLastMessage,
     typingByPeer,
   } = useChatContext();
+  const { setIsNewChatModalOpen, searchUsers, startDirectConversation } = usePhoneAuth();
 
   const [activeTab, setActiveTab] = useState('chats'); // 'chats' | 'range'
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileSearchResults, setMobileSearchResults] = useState([]);
+
+  // Search mobile users when query contains phone digits or has length >= 3
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 3) {
+      setMobileSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const res = await searchUsers(searchQuery.trim());
+      setMobileSearchResults(res || []);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchUsers]);
 
   // Initial network discovery on mount
   useEffect(() => {
@@ -172,22 +188,73 @@ export default function Lobby() {
           </button>
         </div>
 
-        {/* WhatsApp Search Bar */}
+        {/* WhatsApp Search Bar & New Chat Button */}
         <div className="p-3 bg-[#111b21]">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#202c33] border border-transparent focus-within:border-[#00a884]/40 transition-colors">
-            <Search className="w-4 h-4 text-[#8696a0]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search or start new chat"
-              className="w-full bg-transparent text-sm text-[#e9edef] placeholder-[#8696a0] focus:outline-none"
-            />
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#202c33] border border-transparent focus-within:border-[#00a884]/40 transition-colors">
+              <Search className="w-4 h-4 text-[#8696a0]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search name or mobile number"
+                className="w-full bg-transparent text-sm text-[#e9edef] placeholder-[#8696a0] focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsNewChatModalOpen(true)}
+              className="p-2.5 rounded-lg bg-[#00a884] text-white hover:bg-[#008069] transition-colors shrink-0 shadow-md cursor-pointer"
+              title="New Chat by Mobile Number"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
         {/* Tab Content List */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+          {/* Mobile Number Search Results Section */}
+          {mobileSearchResults.length > 0 && (
+            <div className="mb-3 p-2 rounded-xl bg-[#202c33]/40 border border-[#00a884]/20 space-y-2">
+              <span className="text-[11px] font-bold text-[#00a884] uppercase tracking-wider px-1">
+                Verified Users by Mobile:
+              </span>
+              {mobileSearchResults.map((usr) => (
+                <div
+                  key={usr.userId}
+                  className="p-2.5 rounded-lg bg-[#202c33] hover:bg-[#2a3942] flex items-center justify-between gap-2.5 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+                      style={{ background: getAvatarColor(usr.displayName) }}
+                    >
+                      {getInitials(usr.displayName)}
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="text-xs font-bold text-[#e9edef] truncate">{usr.displayName}</h5>
+                      <span className="text-[10px] text-[#8696a0] block">{usr.phoneNumber}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await startDirectConversation(usr.userId);
+                      if (res && res.conversationId) {
+                        handleSelectChat(usr.userId, usr.displayName);
+                      }
+                    }}
+                    className="py-1 px-3 rounded-lg text-xs font-bold bg-[#00a884] text-white hover:bg-[#008069] shadow-sm flex items-center gap-1 shrink-0"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>Chat</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {activeTab === 'range' ? (
             <div className="p-2">
               <DeviceList

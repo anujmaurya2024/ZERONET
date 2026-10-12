@@ -7,6 +7,7 @@ import { DiscoveryProvider } from './context/DiscoveryContext';
 import { PeerProvider } from './context/PeerContext';
 import { ChatProvider } from './context/ChatContext';
 import { TranslationProvider } from './context/TranslationContext';
+import { PhoneAuthProvider } from './context/PhoneAuthContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -17,7 +18,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <PeerProvider>
             <ChatProvider>
               <TranslationProvider>
-                <App />
+                <PhoneAuthProvider>
+                  <App />
+                </PhoneAuthProvider>
               </TranslationProvider>
             </ChatProvider>
           </PeerProvider>

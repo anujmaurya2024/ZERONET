@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, Wifi, Edit2, Check, X, Shield, RefreshCw, Languages } from 'lucide-react';
+import { MessageCircle, Wifi, Edit2, Check, X, Shield, RefreshCw, Languages, Smartphone, Lock } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 import { useDiscovery } from '../context/DiscoveryContext';
 import { useTranslation, SUPPORTED_LANGUAGES } from '../context/TranslationContext';
+import { usePhoneAuth } from '../context/PhoneAuthContext';
 import { getAvatarColor, getInitials } from '../utils/avatar';
 
 export default function Navbar() {
   const { deviceName, updateDeviceName, connected } = useSocket();
   const { isScanning, discoverServers, serverUrl } = useDiscovery();
   const { settings, setIsSettingsOpen } = useTranslation();
+  const { phoneStatus, setIsPhoneModalOpen, setIsPrivacyModalOpen } = usePhoneAuth();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(deviceName);
@@ -92,6 +94,34 @@ export default function Navbar() {
               <span className="text-xs font-bold text-[#e9edef] uppercase tracking-wider">
                 {settings?.preferredIncomingLanguage || 'EN'}
               </span>
+            </button>
+
+            {/* Mobile Number Verification Button */}
+            <button
+              type="button"
+              onClick={() => setIsPhoneModalOpen(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                phoneStatus.isVerified
+                  ? 'bg-[#00a884]/15 border-[#25d366]/40 text-[#25d366]'
+                  : 'bg-[#111b21] hover:bg-[#2a3942] border-[rgba(134,150,160,0.2)] text-[#8696a0] hover:text-[#e9edef]'
+              }`}
+              title={phoneStatus.isVerified ? `Verified: ${phoneStatus.phoneNumberE164}` : 'Link your mobile number for WhatsApp-style discovery'}
+            >
+              <Smartphone className="w-4 h-4 shrink-0" />
+              <span className="text-xs font-semibold hidden md:inline truncate max-w-[120px]">
+                {phoneStatus.isVerified ? phoneStatus.phoneNumberE164 : 'Link Phone'}
+              </span>
+              {phoneStatus.isVerified && <Check className="w-3 h-3 text-[#25d366]" />}
+            </button>
+
+            {/* Privacy Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsPrivacyModalOpen(true)}
+              className="p-1.5 rounded-full bg-[#111b21] hover:bg-[#2a3942] border border-[rgba(134,150,160,0.15)] text-[#8696a0] hover:text-[#00a884] transition-colors cursor-pointer"
+              title="Privacy & Discovery Settings"
+            >
+              <Lock className="w-4 h-4" />
             </button>
 
             {/* User Profile Chip (Click to Edit Name) */}
