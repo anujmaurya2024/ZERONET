@@ -50,12 +50,15 @@ export async function scanNetwork() {
 }
 
 export function getDefaultServerUrl() {
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return `http://${window.location.hostname}:${SERVER_PORT}`;
+  }
   if (import.meta.env.VITE_SERVER_URL) {
     return import.meta.env.VITE_SERVER_URL;
   }
   if (typeof window !== 'undefined' && window.location.hostname) {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || /^172\./.test(host)) {
+    if (/^192\.168\./.test(host) || /^10\./.test(host) || /^172\./.test(host)) {
       return `http://${host}:${SERVER_PORT}`;
     }
   }
